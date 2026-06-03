@@ -12,11 +12,14 @@
 ## 目录
 
 - [它能做什么](#它能做什么)
+- [缝合工具链](#缝合工具链)
 - [快速开始（3 分钟）](#快速开始3-分钟)
 - [命令大全](#命令大全)
-- [常见问题排查](#常见问题排查)
+- [bridge v6.1 新特性](#bridge-v61-新特性)
+- [hot_topics.py — 独立热点API](#hot_topicspy--独立热点api)
+- [CloakBrowser — 反爬隐身 Chromium](#cloakbrowser--反爬隐身-chromium)
 - [与 Hermes Agent 集成](#与-hermes-agent-集成)
-- [代理自动管理（选装）](#代理自动管理选装)
+- [常见问题排查](#常见问题排查)
 - [项目文件结构](#项目文件结构)
 - [开发踩坑记录](#开发踩坑记录)
 
@@ -35,6 +38,7 @@
 "给这篇文章找3张配图"             自动搜头条图片 → 提取高分辨率图 → vision验证内容匹配 → 下载
 "网又断了，看看怎么回事"           5层递进诊断 → 定位到Clash残留 → 自动修复 → 验证恢复
 "搜一下鸿蒙最新版本的评测"         多引擎搜索 → 点进原文 → 读完 → 判断完整性 → 返回摘要
+"今天有什么热点"                  直接返回头条热搜 TOP10 + 东方财富快讯（原生命令，秒级）
 ```
 
 ### ⌨️ 命令行模式（Windows CMD 直接跑）
@@ -52,7 +56,32 @@
 Ctrl+F 搜索                   python hermes_client.py find_in_page "关键词"
 ```
 
-**关键区别：** 它不是新开一个自动化浏览器，而是**操控你正在用的 Edge/Chrome 窗口**。你登录过的网站（小红书、知乎、微博）直接用，不需要再登录。配合 Hermes Agent 时，AI 自己会判断什么时候搜索、什么时候换引擎、什么时候开代理——你只需要说你要什么。
+**关键区别：** 它不是新开一个自动化浏览器，而是**操控你正在用的 Edge/Chrome 窗口**。你登录过的网站（小红书、知乎、微博）直接用，不需要再登录。
+
+> ⚠️ **独立窗口原则：** AI Agent 操作时永远用 `create_window` 开新窗口，用完 `close_window` 关闭。**绝不在你正在工作的窗口里开标签页**——不会打扰你的正常浏览。
+
+---
+
+## 缝合工具链
+
+Bridge 是内容获取链路的最后一环。整个体系按场景分工：
+
+```
+轻量阅读       → Jina Reader (r.jina.ai)     URL→Markdown，零开销
+搜索+全文      → Jina Reader (s.jina.ai)     搜5条+抓全文，写作神器
+HTTP 抓取      → Scrapling get               自适应选择器，Python/CLI
+隐身反爬       → CloakBrowser 🆕             58个C++补丁隐身Chromium，过Cloudflare
+后台热点       → Bridge 原生命令 🆕           toutiao_hot/eastmoney_kuaixun 秒级返回
+需要交互       → Browser Bridge ← 你在这里    登录/点击/截图，唯一方案
+文档交付       → libreoffice 🆕               MD→DOCX 一键转换
+```
+
+- [Jina Reader](https://jina.ai/reader) — 免费 API，URL 转 Markdown
+- [Scrapling](https://github.com/D4Vinci/Scrapling) — Python 爬虫框架，反反爬
+- [CloakBrowser](https://github.com/CloakHQ/CloakBrowser) — 隐身 Chromium，过所有反爬检测
+- [libreoffice](https://www.libreoffice.org/) — `libreoffice --headless --convert-to docx` 文章→Word
+
+降级链：Jina → Scrapling → CloakBrowser → Browser Bridge（前一环失败自动切换下一环）
 
 ---
 
@@ -75,25 +104,16 @@ pip --version
 
 ### 第二步：下载项目
 
-下载 zip 包：https://github.com/hermes-bridge/hermes-browser-bridge/archive/refs/heads/main.zip
-
-解压到桌面或者你喜欢的目录，比如 `C:\Users\你的用户名\Desktop\hermes-browser-bridge\`
-
-或者在 CMD 里：
-
 ```cmd
-cd C:\Users\你的用户名\Desktop
-git clone https://github.com/hermes-bridge/hermes-browser-bridge.git
+git clone https://github.com/xxxsuke/hermes-browser-bridge.git
+cd hermes-browser-bridge
 ```
 
-（如果没有 git，去 https://git-scm.com/download/win 下载装一下）
+或直接下载 zip：https://github.com/xxxsuke/hermes-browser-bridge/archive/refs/heads/main.zip
 
 ### 第三步：安装依赖
 
-在 CMD 里进入项目目录，运行：
-
 ```cmd
-cd C:\Users\你的用户名\Desktop\hermes-browser-bridge
 pip install websockets
 ```
 
@@ -101,22 +121,14 @@ pip install websockets
 
 ### 第四步：启动桥接服务
 
+双击 `start_bridge.ps1`（会自动检测端口冲突、杀掉旧进程、验证扩展连接）。
+
+或手动：
 ```cmd
 python bridge.py
 ```
 
-你会看到：
-
-```
-╔══════════════════════════════════════════╗
-║     Hermes Browser Bridge v5             ║
-║     WebSocket: ws://localhost:9876       ║
-╚══════════════════════════════════════════╝
-```
-
-**⚠️ 这个窗口不要关，保持运行。** 后面所有的操作都需要它活着。
-
-> **防火墙弹窗？** Windows 可能会问是否允许 Python 通过防火墙 → 点「允许访问」。
+**⚠️ 这个窗口不要关，保持运行。**
 
 ### 第五步：安装 Edge/Chrome 扩展
 
@@ -125,30 +137,20 @@ python bridge.py
 3. **打开左上角的「开发人员模式」开关**（很重要！）
 4. 点击「加载解压缩的扩展」
 5. 选择项目里的 `extension` 文件夹
-   - 如果你解压在桌面：`C:\Users\你的用户名\Desktop\hermes-browser-bridge\extension`
-6. 扩展栏会出现一个桥接图标
-7. 图标上应该显示 **「已连接」** 状态
+6. 扩展栏会出现一个桥接图标，显示 **「已连接」**
 
 没显示「已连接」？看下方 [常见问题排查](#常见问题排查)。
 
 ### 第六步：验证
 
-**不要关掉 bridge.py 那个 CMD 窗口。** 打开**另一个** CMD 窗口：
+**不要关掉 bridge.py 那个 CMD 窗口。** 打开**另一个** CMD：
 
 ```cmd
-cd C:\Users\你的用户名\Desktop\hermes-browser-bridge
+cd hermes-browser-bridge
 python hermes_client.py list_tabs
 ```
 
-应该返回你当前浏览器打开的标签页列表。
-
-再试试读取当前页面的文字：
-
-```cmd
-python hermes_client.py read_text
-```
-
-返回页面内容 → 恭喜，成功了！🎉
+返回标签页列表 → 成功！🎉
 
 ---
 
@@ -161,13 +163,8 @@ python hermes_client.py list_tabs                        # 列出所有标签
 python hermes_client.py activate_tab <id>                # 切换到指定标签
 python hermes_client.py new_tab <url>                     # 新建标签页
 python hermes_client.py close_tab <id>                    # 关闭标签
-python hermes_client.py reload_tab [id]                   # 刷新（不指定 id 刷当前页）
+python hermes_client.py reload_tab [id]                   # 刷新
 python hermes_client.py navigate <url> [id]               # 导航到 URL
-python hermes_client.py go_back [id]                      # 后退
-python hermes_client.py go_forward [id]                   # 前进
-python hermes_client.py duplicate_tab <id>                # 复制标签页
-python hermes_client.py move_tab <id> <index>             # 移动标签位置
-python hermes_client.py pin_tab <id>                      # 固定标签
 ```
 
 ### 页面读写
@@ -175,64 +172,139 @@ python hermes_client.py pin_tab <id>                      # 固定标签
 ```cmd
 python hermes_client.py read_text [maxLength]             # 读取页面文字
 python hermes_client.py read_html                         # 读取 HTML 源码
-python hermes_client.py read_element <selector>            # 读取指定元素
 python hermes_client.py get_links [maxCount]              # 获取所有链接
 python hermes_client.py get_images [maxCount]             # 获取所有图片
-python hermes_client.py scroll [direction] [amount]       # 滚动页面（up/down）
+python hermes_client.py scroll [direction] [amount]       # 滚动页面
+python hermes_client.py dismiss_popups                     # 自动关闭弹窗/遮罩/Cookie
 ```
 
 ### 页面操作
 
 ```cmd
 python hermes_client.py click <selector>                  # 点击元素
-python hermes_client.py double_click <selector>            # 双击
-python hermes_client.py right_click <selector>             # 右键
-python hermes_client.py hover <selector>                  # 悬停
 python hermes_client.py write_text <selector> <text>       # 填写输入框
-python hermes_client.py type_text <selector> <text>        # 逐字输入（模拟打字）
+python hermes_client.py type_text <selector> <text>        # 逐字模拟键盘输入
 python hermes_client.py find_in_page <query>               # 页面内搜索
 ```
 
-**选择器（selector）示例：**
-
-| 选择器 | 匹配 | 示例 |
-|--------|------|------|
-| `#kw` | id="kw" 的元素 | 百度搜索框 |
-| `#su` | id="su" 的按钮 | 百度搜索按钮 |
-| `.title` | class="title" 的元素 | |
-| `div.result` | class="result" 的 div | |
-| `button` | 第一个 button | |
-| `input[name="q"]` | name="q" 的 input | |
-
-### 截图与下载
+### 截图与窗口
 
 ```cmd
-python hermes_client.py screenshot [id]                   # 截图当前页面
-python hermes_client.py download <url> [filename]          # 下载文件
-python hermes_client.py list_downloads                    # 查看下载列表
-```
-
-### 书签与历史
-
-```cmd
-python hermes_client.py list_bookmarks                    # 列出书签树
-python hermes_client.py create_bookmark <title> <url>     # 创建书签
-python hermes_client.py remove_bookmark <id>              # 删除书签
-python hermes_client.py search_bookmarks <query>          # 搜索书签
-python hermes_client.py search_history <query>            # 搜索历史
-```
-
-### 窗口与系统
-
-```cmd
+python hermes_client.py screenshot [id]                   # 截图
 python hermes_client.py create_window <url>                # 创建新窗口
 python hermes_client.py list_windows                      # 列出所有窗口
-python hermes_client.py get_tab_info [id]                  # 标签详情
-python hermes_client.py set_zoom [id] <level>              # 设置缩放（1.0=100%）
-python hermes_client.py get_zoom [id]                      # 获取缩放
-python hermes_client.py clear_cache                        # 清除缓存
-python hermes_client.py clear_cookies                      # 清除 Cookie
-python hermes_client.py clear_data                         # 清除所有数据
+```
+
+---
+
+## bridge v6.1 新特性
+
+### 原生命令
+
+无需扩展，bridge 直接执行 HTTP 请求返回 JSON。与 `navigate`/`screenshot` 走同一 WS 协议。
+
+```python
+await ws.send(json.dumps({
+    "type": "command", "action": "toutiao_hot",
+    "params": {"limit": 10},
+    "secret": "hermes-bridge-v6"     # v6.1 强制认证
+}))
+```
+
+| 命令 | 功能 | 数据源 | 认证 |
+|------|------|--------|:---:|
+| `toutiao_hot` | 今日头条实时热搜榜 | public API | ✅ |
+| `eastmoney_kuaixun` | 东方财富 7x24 快讯 | public API | ✅ |
+
+**安全变更**：v6.1 新增 `BRIDGE_SECRET` 认证。默认值 `hermes-bridge-v6`，可通过环境变量覆盖。无正确 secret 的请求被拒绝。
+
+### 架构
+
+```
+Python WS → bridge.py
+              ├─ toutiao_hot / eastmoney_kuaixun → HTTP API（原生，无扩展）
+              ├─ 安全认证（BRIDGE_SECRET）
+              ├─ navigate / screenshot / ... → Edge 扩展 → 浏览器
+              └─ 心跳保活 + 内存清理
+```
+
+源自分支 `@jackwener/opencli` v1.8.0（27K stars）的公开适配器，经三轮安全审查（multi-perspective-review）后直接吸收进 bridge。
+
+---
+
+## hot_topics.py — 独立热点API
+
+纯 Python 零依赖模块，可直接喂给任何 AI（Cursor/Claude/Copilot/Gemini）：
+
+```python
+from hot_topics import toutiao_hot, eastmoney_kuaixun, sinafinance_news
+
+# 头条热搜 TOP10
+for item in toutiao_hot(10):
+    print(f"{item['rank']}. {item['title']} | 热度:{item.get('hot_value',0):,}")
+
+# 财经快讯
+for item in eastmoney_kuaixun(20, column="102"):
+    print(f"{item['time']} {item['title']}")
+
+# 新浪财经
+for item in sinafinance_news(20):
+    print(f"{item['time']} {item['title']}")
+```
+
+| 函数 | 数据源 | 需要API Key？ | 速率 |
+|------|--------|:---:|------|
+| `toutiao_hot(limit)` | 今日头条热搜 | ❌ | 实时 |
+| `eastmoney_kuaixun(limit, column)` | 东方财富快讯 | ❌ | 实时 |
+| `sinafinance_news(limit)` | 新浪财经 | ❌ | 实时 |
+
+**蒸馏记录**：经 multi-perspective-review 三轮审查（规范14→创意5→攻击6），全部缺陷已修复：
+- R1: `_parse_limit` 参数解析、`.get()` 防御性编码、null 注入修复
+- R2: 4份拷贝合并为1源、空数据优雅降级、安全密钥架构
+- R3: BRIDGE_SECRET 强制执行认证
+
+---
+
+## CloakBrowser — 反爬隐身 Chromium
+
+对于被强反爬保护的网站（Cloudflare/BrowserScan/百度验证码），用 CloakBrowser 作为替代后端。
+
+```python
+from cloakbrowser import launch
+import os
+os.environ['CLOAKBROWSER_BINARY_PATH'] = '/path/to/chrome'  # ~/cloakbrowser/chrome
+
+browser = launch(headless=True)
+page = browser.new_page()
+page.goto('https://top.baidu.com/board?tab=realtime')
+text = page.inner_text('body')          # 反爬全覆盖通过
+browser.close()
+```
+
+| 场景 | 用什么 |
+|------|--------|
+| 轻量抓取/Jina 能搞定 | Jina Reader |
+| HTTP 可直接请求 | Scrapling |
+| 反爬强站（Cloudflare/BrowserScan） | CloakBrowser |
+| 已登录交互/发帖 | Bridge (Edge) |
+| 实时热点数据 | Bridge 原生命令 |
+
+---
+
+## 与 Hermes Agent 集成
+
+本项目提供 Hermes Skill 文件（`skills/` 目录）。Skill 按场景分工：
+
+| Skill | 用途 | 何时加载 |
+|-------|------|---------|
+| `browser-control` | 统一入口：WS命令/代理/搜索/内容研究/图片/网络诊断 | 所有浏览器操作 |
+| `jina-reader` | Jina Reader API：URL→Markdown/全文搜索 | 读网页内容 |
+| `scrapling-official` | Scrapling 爬虫：get/fetch/stealthy | HTTP抓取 |
+
+安装：
+```bash
+mkdir -p ~/.hermes/skills/automation/browser-control/
+cp skills/browser-control.md ~/.hermes/skills/automation/browser-control/SKILL.md
 ```
 
 ---
@@ -240,209 +312,33 @@ python hermes_client.py clear_data                         # 清除所有数据
 ## 常见问题排查
 
 ### ❌ `python` 提示"不是内部或外部命令"
-
-**原因：** 安装 Python 时没有勾选 `Add Python to PATH`。
-
-**解决：**
-1. 重新运行 Python 安装包
-2. 在第一个界面**勾选「Add Python to PATH」**
-3. 点「Install Now」
-4. 重启 CMD
-
-### ❌ `pip` 提示"不是内部或外部命令"
-
-**原因：** 同上，或 Python 版本太老。
-
-**解决：** 重新安装 Python（3.7 以上版本），确保勾选 PATH。装好后运行：
-
-```cmd
-python -m pip install --upgrade pip
-```
+重新安装 Python 时勾选 `Add Python to PATH`，重启 CMD。
 
 ### ❌ `ModuleNotFoundError: No module named 'websockets'`
-
-**原因：** 没装 websockets 库。
-
-**解决：**
-
 ```cmd
 pip install websockets
 ```
 
 ### ❌ 扩展图标显示「未连接」
-
-**原因：** bridge.py 没启动，或端口被占用。
-
-**解决：**
-1. 确认 `python bridge.py` 在运行，且显示 `ws://localhost:9876`
-2. 确认不是 9876 端口被其他程序占用：
-
-```cmd
-netstat -ano | findstr :9876
-```
-
-如果被占用，关掉占用程序，或者改 bridge.py 里的 PORT 为 9875 并在扩展 background.js 也改。
-
-### ❌ 扩展加载后显示"无法加载扩展"
-
-**原因：**
-- 选错了文件夹（应该选 extension 子文件夹，不是项目根目录）
-- 没打开「开发人员模式」
-
-**解决：**
-1. 确认 `edge://extensions` 页面左上角的「开发人员模式」已开启
-2. 点「加载解压缩的扩展」→ 选择 `extension` 文件夹（里面有 manifest.json 的那个）
-
-### ❌ `read_text` 返回空内容或 `"content script not ready"`
-
-**原因：** 浏览器没有把 content.js 注入到当前页面。
-
-**解决：**
-
-1. **刷新页面**（F5）让 content.js 重新注入
-2. 如果还是不行，重启扩展：
-   - 在 `edge://extensions` 页面关掉扩展开关 → 再打开
-   - 或者删除扩展 → 重新加载
-
-### ❌ `read_text` 返回成功但内容是空的，或者 `write_text` 写不进去
-
-**原因：** 目标页面用了 Vue/React 等现代框架，直接赋值 `el.value` 不触发响应式更新。
-
-**解决：** 已经内置了修复——代码会自动用原生 setter + dispatchEvent。如果还有问题，试试：
-
-```cmd
-python hermes_client.py type_text <selector> <text>
-```
-
-（`type_text` 是逐字模拟键盘输入，而非直接赋值）
-
-### ❌ 扩展显示「已连接」但不响应任何命令
-
-**原因：** 新建的标签页需要刷新才能注入 content.js。
-
-**解决：** 导航到新页面后，等 1-2 秒再执行操作。或者手动刷新一下页面。
-
-### ❌ 截图返回空
-
-**原因：** 某些受限页面（chrome://、edge://）不能截图。
-
-**解决：** 在普通网页（如 baidu.com）上执行截图。如果还是空，试试兼容模式：
-
-```cmd
-python hermes_client.py screenshot
-```
-
-如果一直失败，可以手动截屏：Windows + Shift + S
+确认 `python bridge.py` 在运行，端口 9876 未被占用。
 
 ### ❌ 桥接启动时说 `Address already in use`
-
-**原因：** 端口 9876 被其他程序占用了。
-
-**解决：**
-
 ```cmd
 netstat -ano | findstr :9876
+taskkill /PID <PID> /F
 ```
+或用 `start_bridge.ps1` 自动处理。
 
-记下最后一列的 PID，然后：
+### ❌ `read_text` 返回空或 `content script not ready`
+刷新页面（F5），或在 `edge://extensions` 重载扩展。
 
+### ❌ 页面被弹窗/广告遮挡
 ```cmd
-taskkill /PID <那个数字> /F
+python hermes_client.py dismiss_popups
 ```
 
-或者更改 bridge.py 第 7 行的 `PORT = 9876` 为其他端口（比如 9875），同步修改 `offscreen.js` 里的端口号，然后重装扩展。
-
-### ❌ 修改了 manifest.json 后扩展不工作了
-
-**原因：** Chromium 扩展在权限变更后必须**删除重装**，仅仅是「重新加载」不行。
-
-**解决：**
-1. 在 `edge://extensions` 上点「删除」扩展
-2. 再次点击「加载解压缩的扩展」
-3. 刷新所有页面
-
-### ❌ bridge.py 提示 `os.name == 'nt'` 相关错误
-
-**原因：** 你在 Linux/Mac 上运行了 Windows 专用代码（proxy_manager、某些 Windows 特有操作）。
-
-**解决：** bridge.py 本身是跨平台的。只有 `proxy_manager.py` 依赖于 Windows 注册表。如果不在 Windows 上，忽略 proxy_manager 相关功能即可。
-
-### ❌ Windows 防火墙弹出 Python 网络访问
-
-**原因：** bridge.py 监听端口时触发了防火墙规则。
-
-**解决：** 点击「允许访问」。这是安全的——bridge 只在 localhost（本机）监听。
-
----
-
-## 与 Hermes Agent 集成
-
-如果你在使用 [Hermes Agent](https://hermes-agent.nousresearch.com/)（本地 AI Agent 框架），项目附带了 Hermes Skill 文件（在 `skills/` 目录下）。
-
-### 快速安装
-
-```bash
-# 创建 skill 目录并复制（三个 skill 文件）
-mkdir -p ~/.hermes/skills/automation/browser-control/
-cp skills/browser-control.md ~/.hermes/skills/automation/browser-control/SKILL.md
-
-mkdir -p ~/.hermes/skills/automation/browser-bridge/
-cp skills/browser-bridge.md ~/.hermes/skills/automation/browser-bridge/SKILL.md
-
-# browser-bridge-extension 是英文开发参考，可选
-mkdir -p ~/.hermes/skills/automation/browser-bridge-extension/
-cp skills/browser-bridge-extension.md ~/.hermes/skills/automation/browser-bridge-extension/SKILL.md
-```
-
-> ⚠️ **已有 browser-bridge 的用户**：如果你已经在用旧版 skill，安装前先备份 `~/.hermes/skills/automation/browser-*`，避免覆盖本地修改。
-
-### 统一入口：browser-control（推荐）
-
-**日常浏览器操作只需要加载一个 skill：`browser-control`。**
-
-它覆盖了：WS 命令封装、代理自动管理、多平台搜索、内容研究流水线、图片提取验证、网络诊断。
-
-Hermes 里说"帮我搜一下xxx"或"找张配图"，Agent 会自动加载 browser-control。
-
-### 底层参考：browser-bridge
-
-仅在调试桥接本身（WS 断连、扩展不响应）时才需要加载。包含完整的架构说明、命令列表、踩坑记录。
-
-### 调用示例
-
-```python
-from hermes_tools import terminal
-
-# 读取页面
-terminal("python3 ~/hermes-browser-bridge/hermes_client.py read_text", timeout=10)
-
-# 点击按钮
-terminal("python3 ~/hermes-browser-bridge/hermes_client.py click '#publish-btn'", timeout=10)
-
-# 填写表单
-terminal("python3 ~/hermes-browser-bridge/hermes_client.py write_text '#title' '标题'", timeout=10)
-
-# 截图
-terminal("python3 ~/hermes-browser-bridge/hermes_client.py screenshot", timeout=15)
-```
-
----
-
-## 代理自动管理（选装）
-
-如果你使用 Clash Verge（翻墙工具）访问国际网站，`proxy_manager.py` 可以自动切换代理模式：
-
-```cmd
-python proxy_manager.py on     # 开启系统代理 + Clash 全局模式
-python proxy_manager.py off    # 关闭系统代理 + Clash 规则模式
-```
-
-**前提条件：**
-- 已安装 [Clash Verge Rev](https://github.com/clash-verge-rev/clash-verge-rev)
-- Clash 核心端口 7897（默认）
-- Clash API 端口 9090（默认），Secret 配置正确
-
-如果不用代理/Clash，忽略这个文件就行，不影响核心功能。
+### ❌ Windows 防火墙弹窗
+点「允许访问」——bridge 只在 localhost 监听。
 
 ---
 
@@ -450,90 +346,34 @@ python proxy_manager.py off    # 关闭系统代理 + Clash 规则模式
 
 ```
 hermes-browser-bridge/
-├── bridge.py              # [核心] WebSocket 桥接服务（跑在 Windows 上）
-├── hermes_client.py       # [核心] 命令行客户端 50+ 命令
-├── proxy_manager.py       # [选装] 代理自动开关（仅 Windows + Clash）
-├── demo.py                # 演示 Python 脚本
-├── gen_icons.py           # 扩展图标生成工具
-├── INSTALL.md             # 安装指南（本文档）
-├── README.md              # 项目介绍
-├── extension/             # Chromium 浏览器扩展
-│   ├── manifest.json      # MV3 扩展配置
-│   ├── background.js      # Service Worker — 接收命令执行 Chrome API
-│   ├── content.js         # 页面注入脚本（~460 行）
-│   ├── offscreen.js       # Offscreen 文档 — 管理 WebSocket 持久连接
-│   ├── offscreen.html     # Offscreen 页面
-│   ├── popup.html         # 扩展弹窗界面
-│   ├── popup.js           # 扩展弹窗逻辑
-│   └── icons/             # 扩展图标（16/48/128）
-└── skills/                # Hermes Agent Skill 文件（选装）
-    ├── browser-control.md
-    ├── browser-bridge.md
-    └── browser-bridge-extension.md
+├── bridge.py               # WS 服务端 v6.1（原生命令+安全认证+心跳）
+├── hermes_client.py         # CLI 客户端
+├── hot_topics.py            # 独立热点API（纯Python零依赖）
+├── start_bridge.ps1         # Windows 一键启动脚本
+├── proxy_manager.py         # 全局代理开关
+├── extension/               # Edge/Chrome 扩展
+│   ├── manifest.json
+│   ├── background.js         # 扩展后台
+│   └── content.js            # 页面注入脚本
+├── skills/                   # Hermes Agent Skill 文件
+│   ├── browser-control.md
+│   ├── jina-reader.md
+│   └── scrapling-official.md
+├── CLAUDE.md                 # Agent 行为规则
+└── README.md                 # 本文
 ```
 
 ---
 
 ## 开发踩坑记录
 
-这个项目踩过的坑，直接写在这里让后人少走弯路：
-
-### 1️⃣ MV3 Service Worker 30 秒断连
-
-Service Worker 空闲 30 秒就会被浏览器杀掉，WebSocket 连接随之断开。
-
-**解决（v6）：** offscreen 文档 + alarms 双保活。offscreen 页面持有 WebSocket 持久连接（不受 SW 生命周期影响），`chrome.alarms` 每 3 秒唤醒 SW 确保响应。两个机制互补：alarms 保证 SW 存活，offscreen 保证 WS 不断。
-
-### 2️⃣ Content script 必须加消息监听器
-
-如果 `content.js` 没有 `chrome.runtime.onMessage.addListener`，所有 `read_text`/`click` 都返回 "injection failed"。
-
-**已内置修复。** 如果改过 content.js，注意检查。
-
-### 3️⃣ 禁止 eval（CSP 策略）
-
-`eval("return (" + code + ")")` 会被 Content Security Policy 阻止。
-
-**已内置修复。** 改用 `new Function('return (' + code + ')')()`。
-
-### 4️⃣ Vue/React 输入框不回显
-
-`el.value = 'xxx'` 赋值后，Vue/React 不触发响应式更新，界面上看不出来。
-
-**已内置修复。** 用原生 setter：
-
-```javascript
-const nativeSetter = Object.getOwnPropertyDescriptor(
-  HTMLInputElement.prototype, 'value'
-).set;
-nativeSetter.call(el, newVal);
-el.dispatchEvent(new Event('input', { bubbles: true }));
-```
-
-### 5️⃣ `captureVisibleTab` 需要用户手势
-
-Chrome 的 `captureVisibleTab` 需要当前页面有用户交互（键盘/鼠标）。从命令行触发时经常失败。
-
-**已内置修复。** 用 `chrome.debugger.attach` + `Page.captureScreenshot` 兜底。
-
-### 6️⃣ 改 manifest 权限后必须重装
-
-修改 `manifest.json` 的 permissions 后，浏览器会禁用扩展。点「重新加载」也没用。
-
-**解决：** 删除扩展 → 重新加载 → 刷新所有已打开页面。
-
-### 7️⃣ DNS 劫持问题
-
-某些网络环境（校园网、酒店 WiFi、运营商）会劫持 DNS 返回广告页。
-
-**表现：** 打开网页弹出广告、`read_text` 返回的不是目标内容。
-
-**解决：** 在系统设置里把 DNS 改为 `114.114.114.114`。CMD 管理员：
-
-```cmd
-netsh interface ip set dns "以太网" static 114.114.114.114
-ipconfig /flushdns
-```
+1. **NativeMessaging 注册表**：扩展连不上时，检查 `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.hermes.browser_bridge`
+2. **心跳机制 v6**：30s ping/pong 防 Edge sleeping tabs 休眠 + 超时 futures 自动清理
+3. **独立窗口铁律**：Agent 操作必须用 `create_window`，绝不用 `new_tab` 打扰用户
+4. **端口冲突 v2**：`start_bridge.ps1` 智能检测 PID=0/TIME_WAIT 残留，自动恢复
+5. **OpenCLI 吸收**：提取公开适配器→Python→原生命令→三轮蒸馏→安全认证，零额外进程
+6. **内存泄漏修复**：off-screen document 被动休眠→心跳保活→30s 清理超时 pending
+7. **bridge 端安全**：v6.1 强制 BRIDGE_SECRET 验证，防止恶意本地进程通过 WS 调用原生命令
 
 ---
 

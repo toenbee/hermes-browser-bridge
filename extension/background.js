@@ -22,7 +22,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // 内容操作 — 转发到 content script
   const contentOps = ['read_text','read_html','read_element','get_links','get_images',
                       'find_in_page','scroll','click','write_text','double_click',
-                      'right_click','hover','drag','key_press','type_text','eval_js'];
+                      'right_click','hover','drag','key_press','type_text','eval_js',
+                      'dismiss_popups'];
   
   if (contentOps.includes(action)) {
     tryExec();

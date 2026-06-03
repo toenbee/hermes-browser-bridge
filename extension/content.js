@@ -28,6 +28,8 @@ window.__hermesBridgeExec = function (action, params) {
       return waitElement(params);
     case "eval_js":
       return evalJS(params);
+    case "dismiss_popups":
+      return dismissPopups(params);
     // ── 鼠标操作 ──
     case "double_click":
       return doubleClick(params);
@@ -276,6 +278,92 @@ function screenshotInfo() {
     },
     scrollY: window.scrollY,
     totalHeight: document.documentElement.scrollHeight
+  };
+}
+
+// ========== 弹窗处理 ==========
+
+function dismissPopups(params) {
+  const dismissed = [];
+  
+  // 常见关闭按钮文本（中英文）
+  const closeTexts = ['×', '✕', '✖', 'close', '关闭', '跳过', '取消', 'dismiss', 'no thanks', 'accept', '同意', '接受', '允许', 'got it', '知道了', 'continue', '继续', 'later', '以后再说', 'not now'];
+  const skipTexts = ['skip', '跳过'];
+  
+  // 策略1：找含关闭文本的按钮/链接
+  const allElements = document.querySelectorAll('button, a, [role="button"], span, div');
+  for (const el of allElements) {
+    const text = (el.innerText || '').trim().toLowerCase();
+    for (const ct of closeTexts) {
+      if (text === ct.toLowerCase()) {
+        try { el.click(); dismissed.push(`clicked:"${el.innerText.trim().substring(0,30)}"`); } catch(e) {}
+        break;
+      }
+    }
+  }
+  
+  // 策略2：找 aria-label 含关闭的元素
+  document.querySelectorAll('[aria-label]').forEach(el => {
+    const label = (el.getAttribute('aria-label') || '').toLowerCase();
+    if (label.includes('close') || label.includes('关闭') || label.includes('dismiss')) {
+      try { el.click(); dismissed.push(`aria:"${label.substring(0,30)}"`); } catch(e) {}
+    }
+  });
+  
+  // 策略3：移除高 z-index 的全屏遮罩（常见弹窗背景）
+  const overlays = document.querySelectorAll('div[style*="z-index"]');
+  for (const el of overlays) {
+    const style = window.getComputedStyle(el);
+    const zIndex = parseInt(style.zIndex);
+    if (zIndex > 1000 && (
+      style.position === 'fixed' || style.position === 'absolute'
+    )) {
+      const rect = el.getBoundingClientRect();
+      // 覆盖大部分屏幕 = 遮罩
+      if (rect.width > window.innerWidth * 0.5 && rect.height > window.innerHeight * 0.3) {
+        // 先尝试找里面的关闭按钮
+        const closeBtn = el.querySelector('button, [role="button"], .close, .dismiss');
+        if (closeBtn) {
+          try { closeBtn.click(); dismissed.push(`overlay_btn:z${zIndex}`); } catch(e) {}
+        } else {
+          el.remove();
+          dismissed.push(`removed_overlay:z${zIndex}`);
+        }
+      }
+    }
+  }
+  
+  // 策略4：按 ESC 键关闭（很多弹窗支持）
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+  
+  // 策略5：常见 cookie/consent 弹窗的固定类名
+  const cookieSelectors = [
+    '.cookie-banner', '.cookie-consent', '.consent-banner', '.gdpr',
+    '#cookie-banner', '#cookie-consent', '[class*="cookie"]',
+    '.notification-banner', '.popup-overlay', '.modal-overlay',
+    '[class*="popup"]', '[class*="modal"]'
+  ];
+  for (const sel of cookieSelectors) {
+    try {
+      document.querySelectorAll(sel).forEach(el => {
+        // 找里面的 accept/同意 按钮
+        const btn = el.querySelector('button');
+        if (btn) {
+          const t = (btn.innerText||'').toLowerCase();
+          if (t.includes('accept')||t.includes('同意')||t.includes('allow')||t.includes('允许')||t.includes('ok')) {
+            btn.click(); dismissed.push(`cookie:${sel}`);
+          }
+        } else {
+          el.remove(); dismissed.push(`removed:${sel}`);
+        }
+      });
+    } catch(e) {}
+  }
+  
+  return { 
+    success: true, 
+    dismissed: dismissed.slice(0, 20),
+    count: dismissed.length
   };
 }
 
